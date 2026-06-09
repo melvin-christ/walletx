@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# IntelliJ
+.idea
+*.iml
+out
+
+# VS Code
+.vscode
+
+# Maven build output
+target
+
+# Maven local repo (if present)
+.m2
+
+# Logs
+*.log
+logs
+
+# Environment files
+.env
+.env.*
+
+# Spring local configs
+application-local.properties
+application-dev.properties
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation
+README.md
+
+# Docker
+Dockerfile.old
+docker-compose.override.yml

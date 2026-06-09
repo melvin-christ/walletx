@@ -9,8 +9,11 @@ import com.melvin.walletx.repository.TransactionRepository;
 import com.melvin.walletx.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,19 +28,23 @@ public class WalletService {
     private final WalletRepository walletRepository;
     private final TransactionRepository transactionRepository;
 
+    @Cacheable(value = "walletBalance", key = "#walletId")
     public WalletResponse getBalance(String walletId) {
+        log.info("Cache MISS — fetching balance from DB for {}", walletId);
         Wallet wallet = findWallet(walletId);
         return toResponse(wallet);
     }
 
     @Transactional
+    @CacheEvict(value = "walletBalance", key = "#request.walletId")
+    @Retryable(retryFor = Exception.class, maxAttempts = 3,
+            backoff = @Backoff(delay = 500))
     public WalletResponse credit(TransactionRequest request) {
         Wallet wallet = findWallet(request.getWalletId());
         assertWalletActive(wallet);
 
         wallet.setBalance(wallet.getBalance().add(request.getAmount()));
         walletRepository.save(wallet);
-
         recordTransaction(wallet, Transaction.TransactionType.CREDIT,
                 request.getAmount(), request.getDescription());
 
@@ -46,17 +53,18 @@ public class WalletService {
     }
 
     @Transactional
+    @CacheEvict(value = "walletBalance", key = "#request.walletId")
+    @Retryable(retryFor = Exception.class, maxAttempts = 3,
+            backoff = @Backoff(delay = 500))
     public WalletResponse debit(TransactionRequest request) {
         Wallet wallet = findWallet(request.getWalletId());
         assertWalletActive(wallet);
 
-        if (wallet.getBalance().compareTo(request.getAmount()) < 0) {
+        if (wallet.getBalance().compareTo(request.getAmount()) < 0)
             throw WalletException.badRequest("Insufficient balance");
-        }
 
         wallet.setBalance(wallet.getBalance().subtract(request.getAmount()));
         walletRepository.save(wallet);
-
         recordTransaction(wallet, Transaction.TransactionType.DEBIT,
                 request.getAmount(), request.getDescription());
 
@@ -69,17 +77,14 @@ public class WalletService {
         return transactionRepository.findByWalletOrderByCreatedAtDesc(wallet, pageable);
     }
 
-    // ── Private helpers ──────────────────────────────────────────────
-
     private Wallet findWallet(String walletId) {
         return walletRepository.findByWalletId(walletId)
                 .orElseThrow(() -> WalletException.notFound("Wallet not found: " + walletId));
     }
 
     private void assertWalletActive(Wallet wallet) {
-        if (wallet.getStatus() != Wallet.WalletStatus.ACTIVE) {
+        if (wallet.getStatus() != Wallet.WalletStatus.ACTIVE)
             throw WalletException.badRequest("Wallet is not active");
-        }
     }
 
     private void recordTransaction(Wallet wallet, Transaction.TransactionType type,

@@ -1,13 +1,15 @@
 package com.melvin.walletx.dto;
 
 import lombok.*;
+
+import java.io.Serializable;
 import java.math.BigDecimal;
 
 @Data
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class WalletResponse {
+public class WalletResponse implements Serializable {
     private String walletId;
     private String ownerName;
     private String ownerEmail;
